@@ -1,20 +1,32 @@
-require("dotenv").config();
-const { WakaTimeClient, RANGE } = require("wakatime-client");
-const Octokit = require("@octokit/rest");
+import * as dotenv from "dotenv";
+import { Octokit } from "@octokit/rest";
+import axios from "axios";
 
+dotenv.config();
 const {
   GIST_ID: gistId,
   GH_TOKEN: githubToken,
-  WAKATIME_API_KEY: wakatimeApiKey
+  WAKATIME_API_KEY: wakatimeApiKey,
 } = process.env;
 
-const wakatime = new WakaTimeClient(wakatimeApiKey);
-
 const octokit = new Octokit({ auth: `token ${githubToken}` });
+const got = axios.create({
+  baseURL: "https://wakatime.com/api/v1/",
+  headers: {
+    Accept: "*/*",
+    Authorization: `Basic ${Buffer.from(wakatimeApiKey).toString("base64")}`,
+  },
+});
+
+async function wakatimeStats({ range = "last_7_days" }) {
+  return await got.get(`users/current/stats/${range}`);
+}
 
 async function main() {
-  const stats = await wakatime.getMyStats({ range: RANGE.LAST_7_DAYS });
-  await updateGist(stats);
+  const stats = await wakatimeStats({});
+  if (stats.data && stats.data.data) {
+    await updateGist(stats.data);
+  }
 }
 
 function trimRightStr(str, len) {
@@ -39,7 +51,7 @@ async function updateGist(stats) {
       trimRightStr(name, 10).padEnd(10),
       time.padEnd(14),
       generateBarChart(percent, 21),
-      String(percent.toFixed(1)).padStart(5) + "%"
+      String(percent.toFixed(1)).padStart(5) + "%",
     ];
 
     lines.push(line.join(" "));
@@ -55,9 +67,9 @@ async function updateGist(stats) {
       files: {
         [filename]: {
           filename: `📊 Weekly development breakdown`,
-          content: lines.join("\n")
-        }
-      }
+          content: lines.join("\n"),
+        },
+      },
     });
   } catch (error) {
     console.error(`Unable to update gist\n${error}`);
